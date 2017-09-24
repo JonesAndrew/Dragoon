@@ -1,77 +1,67 @@
+#include <math.h>
+
 #include "value.hpp"
 
+#define RETURN(val) vm->push(val)
+#define RETURN_NUM(val) vm->push(newNum(val))
+#define RETURN_STRING(val) vm->push(newString(vm, val))
+
 void initCore(VM &vm) {
-    vm.numClass->symbols[vm.compiler->findSymbol("<")] = [](VM *vm) {
-        Value a = vm->pop();
-        Value b = vm->pop();
-
-        a.as.num = b.as.num < a.as.num;
-        vm->push(a);
+    vm.numClass->symbols[vm.compiler->findSymbol("<")] = [](VM *vm, Value *args) {
+        RETURN_NUM(args[0].as.num < args[1].as.num);
     };
-    vm.numClass->symbols[vm.compiler->findSymbol(">")] = [](VM *vm) {
-        Value a = vm->pop();
-        Value b = vm->pop();
-
-        a.as.num = b.as.num > a.as.num;
-        vm->push(a);
+    vm.numClass->symbols[vm.compiler->findSymbol(">")] = [](VM *vm, Value *args) {
+        RETURN_NUM(args[0].as.num > args[1].as.num);
     };
-    vm.numClass->symbols[vm.compiler->findSymbol("<=")] = [](VM *vm) {
-        Value a = vm->pop();
-        Value b = vm->pop();
-
-        a.as.num = b.as.num <= a.as.num;
-        vm->push(a);
+    vm.numClass->symbols[vm.compiler->findSymbol("<=")] = [](VM *vm, Value *args) {
+        RETURN_NUM(args[0].as.num <= args[1].as.num);
     };
-    vm.numClass->symbols[vm.compiler->findSymbol(">=")] = [](VM *vm) {
-        Value a = vm->pop();
-        Value b = vm->pop();
-
-        a.as.num = b.as.num >= a.as.num;
-        vm->push(a);
+    vm.numClass->symbols[vm.compiler->findSymbol(">=")] = [](VM *vm, Value *args) {
+        RETURN_NUM(args[0].as.num >= args[1].as.num);
     };
-    vm.numClass->symbols[vm.compiler->findSymbol("+")] = [](VM *vm) {
-        Value v;
-        v.as.num = vm->pop().as.num + vm->pop().as.num;
-        vm->push(v);
+    vm.numClass->symbols[vm.compiler->findSymbol("==")] = [](VM *vm, Value *args) {
+        RETURN_NUM(args[0].as.num == args[1].as.num);
     };
-    vm.numClass->symbols[vm.compiler->findSymbol("-")] = [](VM *vm) {
-        Value a = vm->pop();
-        Value b = vm->pop();
-
-        a.as.num = b.as.num - a.as.num;
-        vm->push(a);
+    vm.numClass->symbols[vm.compiler->findSymbol("!=")] = [](VM *vm, Value *args) {
+        RETURN_NUM(args[0].as.num != args[1].as.num);
     };
-    vm.numClass->symbols[vm.compiler->findSymbol("*")] = [](VM *vm) {
-        Value v;
-        v.as.num = vm->pop().as.num * vm->pop().as.num;
-        vm->push(v);
+    vm.numClass->symbols[vm.compiler->findSymbol("+")] = [](VM *vm, Value *args) {
+        RETURN_NUM(args[0].as.num + args[1].as.num);
     };
-    vm.numClass->symbols[vm.compiler->findSymbol("/")] = [](VM *vm) {
-        Value a = vm->pop();
-        Value b = vm->pop();
-
-        a.as.num = b.as.num / a.as.num;
-        vm->push(a);
+    vm.numClass->symbols[vm.compiler->findSymbol("-")] = [](VM *vm, Value *args) {
+        RETURN_NUM(args[0].as.num - args[1].as.num);
     };
-    vm.numClass->symbols[vm.compiler->findSymbol("print")] = [](VM *vm) {
-        Value a = vm->pop();
-        
-        printf("%s\n", valueToStr(vm, a).c_str());
+    vm.numClass->symbols[vm.compiler->findSymbol("*")] = [](VM *vm, Value *args) {
+        RETURN_NUM(args[0].as.num * args[1].as.num);
+    };
+    vm.numClass->symbols[vm.compiler->findSymbol("/")] = [](VM *vm, Value *args) {
+        RETURN_NUM(args[0].as.num / args[1].as.num);
+    };
+    vm.numClass->symbols[vm.compiler->findSymbol("sin")] = [](VM *vm, Value *args) {
+        RETURN_NUM(sin(args[0].as.num));
     };
 
-    vm.strClass->symbols[vm.compiler->findSymbol("+")] = [](VM *vm) {
-        Value a = vm->pop();
-        Value b = vm->pop();
-
-        vm->push(newString(vm, AS(b, String)->value + AS(a, String)->value));
+    vm.strClass->symbols[vm.compiler->findSymbol("+")] = [](VM *vm, Value *args) {
+        RETURN_STRING(AS(args[0], String)->value + AS(args[1], String)->value);
     };
 
-    vm.listClass->symbols[vm.compiler->findSymbol("size")] = [](VM *vm) {
-        vm->push(newNum(AS(vm->pop(), List)->size));
+    vm.listClass->symbols[vm.compiler->findSymbol("size")] = [](VM *vm, Value *args) {
+        RETURN_NUM(AS(args[0], List)->size);
     };
 
-    vm.listClass->symbols[vm.compiler->findSymbol("add")] = [](VM *vm) {
-        Value v = vm->pop();
-        AS(vm->pop(), List)->add(v);
+    vm.listClass->symbols[vm.compiler->findSymbol("add")] = [](VM *vm, Value *args) {
+        AS(args[0], List)->add(args[1]);
+    };
+    vm.listClass->symbols[vm.compiler->findSymbol("get")] = [](VM *vm, Value *args) {
+        List *list = AS(args[0], List);
+        int index = args[1].as.num;
+
+        if (index < 0)
+            index = list->size + index;
+
+        if (index < 0 || index >= list->size)
+            printf("YOU DONE FUCKED UP\n");
+
+        RETURN(list->items[index]);
     };
 }

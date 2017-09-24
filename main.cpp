@@ -22,6 +22,8 @@ enum Instruction {
     MUL,
 
     CALL,
+
+    DEL,
 };
 
 std::map<TokenType, std::string> TYPE_TO_STRING = {
@@ -90,6 +92,8 @@ std::map<std::string, TokenType> KEYWORDS = {
 
     {"true", TOKEN_TRUE},
     {"false", TOKEN_FALSE},
+
+    {"delete", TOKEN_DELETE},
 };
 
 void error(std::string err) {
@@ -408,6 +412,8 @@ void Compiler::statement() {
         whileBlock();
     } else if (next.type == TOKEN_EQ) {
         assignment();
+    } else if(current.type == TOKEN_DELETE) {
+        deleteStatment();
     } else {
         expression();
     }
@@ -431,7 +437,6 @@ void Compiler::function() {
     uint8_t depth = 0;
 
     while (current.type != TOKEN_SYMBOL) {
-        printf("%i %s\n", depth, TYPE_TO_STRING[current.type].c_str());
         expression();
         if (current.type == TOKEN_COMMA) {
             match(TOKEN_COMMA);
@@ -502,6 +507,14 @@ void Compiler::assignment() {
 
     code.push_back(MEMSET);
     code.push_back(vars[name]);
+}
+
+void Compiler::deleteStatment() {
+    match(TOKEN_DELETE);
+
+    factor();
+
+    code.push_back(DEL);
 }
 
 void Compiler::add() {
@@ -717,6 +730,11 @@ void VM::run(std::vector<Token> input) {
             case CALL:
                 callMethod(code[ip], code[ip + 1]);
                 ip += 2;
+                break;
+
+            case DEL:
+                delete pop().as.object;
+                break;
         }
     }
 
@@ -728,29 +746,22 @@ void VM::run(std::vector<Token> input) {
 }
 
 void VM::callMethod(uint8_t code, uint8_t depth) {
-    Value v = *(stack.end() - depth - 1);
+    Value *args = &(stack.end()[- depth - 1]);
+    for (int i = 0; i < depth + 1; i++)
+        stack.pop_back();
 
-    // printf("%s %i\n", valueToStr(this, v).c_str(), depth);
+    std::map<int, std::function<void(VM *vm, Value *args)> > *symbols;
 
-    // for (auto it : compiler->symbolsTable) {
-    //     if (it.second == code) {
-    //         printf("%s\n", it.first.c_str());
-    //         break;
-    //     }
-    // }
-
-    std::map<int, std::function<void(VM *vm)> > *symbols;
-
-    if (!v.isObject)
+    if (!args[0].isObject)
         symbols = &numClass->symbols;
     else
-        symbols = &v.as.object->classObject->symbols;
+        symbols = &args[0].as.object->classObject->symbols;
 
     auto it = symbols->find(code);
     if (it != symbols->end()) {
-        it->second(this);
+        it->second(this, args);
     } else {
-        printf("Missing function\n");
+        printf("Missing function on %s\n", valueToStr(this, args[0]).c_str());
         exit(0);
     }
 }

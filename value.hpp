@@ -72,6 +72,8 @@ enum TokenType {
     TOKEN_TRUE,
     TOKEN_FALSE,
 
+    TOKEN_DELETE,
+
     TOKEN_ADD,
     TOKEN_SUB,
     TOKEN_MUL,
@@ -84,6 +86,7 @@ enum TokenType {
     TOKEN_LTEQ,
     TOKEN_GTEQ,
     TOKEN_EQEQ,
+    TOKEN_NEQ,
 
     TOKEN_LPAREN,
     TOKEN_RPAREN,
@@ -134,6 +137,7 @@ class Compiler {
 
     void ifBlock();
     void whileBlock();
+    void deleteStatment();
     void statement();
     void function();
     void block();
@@ -159,7 +163,7 @@ public:
 };
 
 struct ObjectClass {
-    std::map<int, std::function<void(VM *vm)> > symbols;
+    std::map<int, std::function<void(VM *vm, Value *args)> > symbols;
 };
 
 class VM {
