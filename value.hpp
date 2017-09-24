@@ -5,12 +5,40 @@
 #include <vector>
 #include <stack>
 
+#define AS(value, type) static_cast<type *>(value.as.object)
+
 struct Value;
 
+struct ObjectClass;
+
+class VM;
+
+std::string valueToStr(VM *vm, Value v);
+
+enum ObjectType
+{
+    STRING,
+};
+
 struct Object {
-    int objectType;
+    ObjectType objectType;
+
+    ObjectClass *classObject;
 
     std::vector<Value> fields;
+};
+
+struct String : public Object {
+    std::string value;
+};
+
+struct List : public Object {
+    Value *items;
+
+    int capacity;
+    int size;
+
+    void add(Value v);
 };
 
 struct Value {
@@ -21,16 +49,22 @@ struct Value {
     bool isObject;
 };
 
-inline Value numValue(double n) {
-    Value v;
-    v.as.num = n;
-    return v;
-}
+Value newNum(double n);
+
+String *initString(VM* vm, std::string s);
+
+Value newString(VM* vm, std::string s);
+
+List *initList(VM *vm);
+
+Value newList(VM *vm);
+
 
 enum TokenType {
     TOKEN_EMPTY,
 
     TOKEN_NUMBER,
+    TOKEN_STRING,
     TOKEN_IDENT,
     TOKEN_SYMBOL,
     TOKEN_SYMBOL_START,
@@ -56,11 +90,17 @@ enum TokenType {
     TOKEN_LCURLY,
     TOKEN_RCURLY,
 
+    TOKEN_LBRACKET,
+    TOKEN_RBRACKET,
+
     TOKEN_IF,
     TOKEN_ELSE,
 
+    TOKEN_WHILE,
+
     TOKEN_COMMA,
 };
+
 struct Token {
     TokenType type;
     std::string value;
@@ -71,6 +111,8 @@ struct Token {
 };
 
 class Compiler {
+    VM *vm;
+
     std::vector<Token> input;
     int it;
 
@@ -91,6 +133,7 @@ class Compiler {
     bool isRelop(TokenType type);
 
     void ifBlock();
+    void whileBlock();
     void statement();
     void function();
     void block();
@@ -109,24 +152,26 @@ public:
     std::vector<Value> constants;
     std::map<std::string, int> symbolsTable;
 
-    Compiler();
+    Compiler(VM *vm);
 
+    uint8_t findSymbol(std::string symbol);
     std::vector<uint8_t> compile(std::vector<Token> in);
 };
-
-class VM;
 
 struct ObjectClass {
     std::map<int, std::function<void(VM *vm)> > symbols;
 };
 
 class VM {
-    std::stack<Value> stack;
     std::vector<Value> memory;
 
 public:
     Compiler *compiler;
     ObjectClass *numClass;
+    ObjectClass *strClass;
+    ObjectClass *listClass;
+
+    std::vector<Value> stack;
 
     VM();
 
@@ -137,6 +182,8 @@ public:
     void printStack();
 
     void run(std::vector<Token> input);
+
+    void callMethod(uint8_t code, uint8_t depth);
 };
 
 void initCore(VM &vm);

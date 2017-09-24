@@ -1,2 +1,2 @@
 all:
-	g++ main.cpp core.cpp -std=c++11 -g
+	g++ main.cpp value.cpp core.cpp -std=c++11 -g

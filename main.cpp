@@ -9,6 +9,7 @@ enum Instruction {
     MOVB,
 
     JUMP,
+    JUMP_BACK,
     JEQ,
 
     MEM,
@@ -23,13 +24,9 @@ enum Instruction {
     CALL,
 };
 
-enum Registers {
-    R0,
-    R1
-};
-
 std::map<TokenType, std::string> TYPE_TO_STRING = {
     {TOKEN_NUMBER, "TOKEN_NUMBER"},
+    {TOKEN_STRING, "TOKEN_STRING"},
     {TOKEN_IDENT, "TOKEN_IDENT"},
     {TOKEN_SYMBOL, "TOKEN_SYMBOL"},
     {TOKEN_SYMBOL_START, "TOKEN_SYMBOL_START"},
@@ -56,7 +53,9 @@ std::map<TokenType, std::string> TYPE_TO_STRING = {
     {TOKEN_RCURLY, "TOKEN_RCURLY"},
 
     {TOKEN_IF, "TOKEN_IF"},
-    {TOKEN_IF, "TOKEN_ELSE"},
+    {TOKEN_ELSE, "TOKEN_ELSE"},
+
+    {TOKEN_WHILE, "TOKEN_WHILE"},
 
     {TOKEN_COMMA, "TOKEN_COMMA"},
 
@@ -79,11 +78,15 @@ std::map<char, TokenType> SINGLE_CHAR_TOKENS = {
     {'}', TOKEN_RCURLY},
 
     {',', TOKEN_COMMA},
+
+    {'[', TOKEN_LBRACKET},
+    {']', TOKEN_RBRACKET},
 };
 
 std::map<std::string, TokenType> KEYWORDS = {
     {"if", TOKEN_IF},
     {"else", TOKEN_ELSE},
+    {"while", TOKEN_WHILE},
 
     {"true", TOKEN_TRUE},
     {"false", TOKEN_FALSE},
@@ -114,6 +117,10 @@ class Tokenizer {
         lookAhead = input[it++];
     }
 
+    char peek() {
+        return input[it];
+    }
+
     void match(char c) {
         if (c == lookAhead)  {
             getChar();
@@ -139,7 +146,7 @@ class Tokenizer {
     }
 
     bool isDigit(char c) {
-        return isdigit(c) || c == '.';
+        return isdigit(c);
     }
 
     bool isAlNum(char c) {
@@ -159,8 +166,9 @@ class Tokenizer {
     std::string getName() {
         std::string name;
 
-        if (!isAlpha(lookAhead))
+        if (!isAlpha(lookAhead)) {
             expected("Name");
+        }
 
         while (isAlNum(lookAhead)) {
             name += lookAhead;
@@ -176,12 +184,30 @@ class Tokenizer {
         if (!isDigit(lookAhead))
             expected("Number");
 
-        while (isDigit(lookAhead)) {
+        while (isDigit(lookAhead) || (lookAhead == '.' && isDigit(peek()))) {
             value += lookAhead;
             getChar();
         }
 
         skipWhite();
+
+        return value;
+    }
+
+    std::string getString() {
+        std::string value;
+
+        if (lookAhead != '"')
+            expected("\"");
+        
+        getChar();
+
+        while (lookAhead != '"') {
+            value += lookAhead;
+            getChar();
+        }
+
+        match('"');
 
         return value;
     }
@@ -225,18 +251,27 @@ public:
         if (isDigit(lookAhead)) {
             std::string num = getNum();
             add(TOKEN_NUMBER, num);
+        } else if (lookAhead == '"') {
+            std::string str = getString();
+            add(TOKEN_STRING, str);
         } else if (isAlpha(lookAhead)) {
             std::string name = getName();
 
             if (KEYWORDS.find(name) != KEYWORDS.end()) {
                 add(KEYWORDS[name]);
             } else if (lookAhead == '(') {
+                // Global Function
                 function(name);
             } else {
                 add(TOKEN_IDENT, name);
             }
 
             skipWhite();
+        } else if (lookAhead == '.') {
+            getChar();
+            
+            std::string name = getName();
+            function(name);
         } else {
             if (lookAhead == '<') {
                 twoChar("<=", TOKEN_LTEQ, TOKEN_LT);
@@ -346,34 +381,67 @@ void Compiler::ifBlock() {
     }
 }
 
+void Compiler::whileBlock() {
+    int ifStart = code.size();
+
+    match(TOKEN_WHILE);
+    match(TOKEN_LPAREN);
+    expression();
+    match(TOKEN_RPAREN);
+
+    code.push_back(JEQ);
+    int start = code.size();
+    code.push_back(0);
+
+    block();
+
+    code.push_back(JUMP_BACK);
+    code.push_back(code.size() - ifStart);
+
+    code[start] = code.size() - start;
+}
+
 void Compiler::statement() {
-    if (current.type == TOKEN_NUMBER) {
-        expression();
-    } else if (current.type == TOKEN_IF) {
+    if (current.type == TOKEN_IF) {
         ifBlock();
+    } else if (current.type == TOKEN_WHILE) {
+        whileBlock();
     } else if (next.type == TOKEN_EQ) {
         assignment();
-    } else if (current.type == TOKEN_SYMBOL_START) {
-        function();
     } else {
         expression();
+    }
+}
+
+uint8_t Compiler::findSymbol(std::string symbol) {
+    auto it = symbolsTable.find(symbol);
+
+    if (it != symbolsTable.end()) {
+        return it->second;
+    } else {
+        int size = symbolsTable.size();
+        symbolsTable[symbol] = size;
+        return size;
     }
 }
 
 void Compiler::function() {
     match(TOKEN_SYMBOL_START);
 
-    do {
+    uint8_t depth = 0;
+
+    while (current.type != TOKEN_SYMBOL) {
+        printf("%i %s\n", depth, TYPE_TO_STRING[current.type].c_str());
         expression();
         if (current.type == TOKEN_COMMA) {
             match(TOKEN_COMMA);
-        } else {
-            break;
         }
-    } while (true);
+        depth++;
+    }
 
     code.push_back(CALL);
-    code.push_back(symbolsTable[current.value]);
+    code.push_back(findSymbol(current.value));
+    code.push_back(depth);
 
     match(TOKEN_SYMBOL);
 }
@@ -390,7 +458,7 @@ void Compiler::expression() {
     if (isAddop(current.type)) {
         code.push_back(MOVB);
         code.push_back(constants.size());
-        constants.push_back(numValue(0));
+        constants.push_back(newNum(0));
     } else {
         term();
     }
@@ -416,6 +484,7 @@ void Compiler::expression() {
 
         code.push_back(CALL);
         code.push_back(symbol);
+        code.push_back(1);
     }
 }
 
@@ -433,7 +502,6 @@ void Compiler::assignment() {
 
     code.push_back(MEMSET);
     code.push_back(vars[name]);
-    code.push_back(R0);
 }
 
 void Compiler::add() {
@@ -442,6 +510,7 @@ void Compiler::add() {
 
     code.push_back(CALL);
     code.push_back(symbolsTable["+"]);
+    code.push_back(1);
 }
 
 void Compiler::sub() {
@@ -450,6 +519,7 @@ void Compiler::sub() {
 
     code.push_back(CALL);
     code.push_back(symbolsTable["-"]);
+    code.push_back(1);
 }
 
 void Compiler::factor() {
@@ -470,23 +540,43 @@ void Compiler::factor() {
     } else if (current.type == TOKEN_TRUE) {
         code.push_back(MOVB);
         code.push_back(constants.size());
-        constants.push_back(numValue(1));
+        constants.push_back(newNum(1));
 
         consume();
     } else if (current.type == TOKEN_FALSE) {
         code.push_back(MOVB);
         code.push_back(constants.size());
-        constants.push_back(numValue(0));
+        constants.push_back(newNum(0));
 
         consume();
     } else if (current.type == TOKEN_NUMBER) {
         code.push_back(MOVB);
         code.push_back(constants.size());
-        constants.push_back(numValue(std::stof(current.value)));
+        constants.push_back(newNum(std::stof(current.value)));
 
         consume();
+    } else if (current.type == TOKEN_STRING) {
+        code.push_back(MOVB);
+        code.push_back(constants.size());
+        constants.push_back(newString(vm, current.value));
+
+        consume();
+    } else if (current.type == TOKEN_LBRACKET) {
+        consume();
+
+        code.push_back(MOVB);
+        code.push_back(constants.size());
+        constants.push_back(newList(vm));
+
+        match(TOKEN_RBRACKET);
+    } else if (current.type == TOKEN_SYMBOL_START) {
+        function();
     } else {
         abort("Unexpected token " + TYPE_TO_STRING[current.type] + ".");
+    }
+
+    if (current.type == TOKEN_SYMBOL_START) {
+        function();
     }
 }
 
@@ -496,6 +586,7 @@ void Compiler::mul() {
 
     code.push_back(CALL);
     code.push_back(symbolsTable["*"]);
+    code.push_back(1);
 }
 
 void Compiler::div() {
@@ -504,25 +595,16 @@ void Compiler::div() {
 
     code.push_back(CALL);
     code.push_back(symbolsTable["/"]);
+    code.push_back(1);
 }
 
-Compiler::Compiler() :
+Compiler::Compiler(VM *vm) :
+    vm(vm),
     it(0),
     current(TOKEN_EMPTY),
     next(TOKEN_EMPTY),
     varOffset(0)
 {
-    symbolsTable = {
-        {"print", 0},
-        {"<", 1},
-        {">", 2},
-        {"<=", 3},
-        {">=", 4},
-        {"+", 5},
-        {"-", 6},
-        {"*", 7},
-        {"/", 8},
-    };
 }
 
 std::vector<uint8_t> Compiler::compile(std::vector<Token> in) {
@@ -537,23 +619,48 @@ std::vector<uint8_t> Compiler::compile(std::vector<Token> in) {
 }
 
 VM::VM() {
-    compiler = new Compiler();
+    numClass = new ObjectClass();
+    strClass = new ObjectClass();
+    listClass = new ObjectClass();
+
+    compiler = new Compiler(this);
 
     initCore(*this);
 }
 
 Value VM::pop() {
-    Value v = stack.top();
-    stack.pop();
+    Value v = stack.back();
+    stack.pop_back();
     return v;
 }
 
 void VM::push(Value val) {
-    stack.push(val);
+    stack.push_back(val);
+}
+
+std::string valueToStr(VM *vm, Value v) {
+    if (!v.isObject) return std::to_string(v.as.num);
+
+    if (v.as.object->classObject == vm->listClass) {
+        std::string final = "[";
+        
+        List *list = AS(v, List);
+
+        for (int i = 0; i < list->size; i++) {
+            final += valueToStr(vm, list->items[i]);
+
+            if (i != list->size - 1)
+                final += ", ";
+        }
+
+        return final + "]";
+    }
+
+    return AS(v, String)->value;
 }
 
 void VM::printStack() {
-    printf("stack %lu: %f\n", stack.size(), pop().as.num);
+    printf("stack %lu: %s\n", stack.size(), valueToStr(this, pop()).c_str());
 
     if (stack.size() > 0) {
         printStack();
@@ -577,6 +684,11 @@ void VM::run(std::vector<Token> input) {
                 ip += dif;
                 break;
 
+            case JUMP_BACK:
+                dif = code[ip];
+                ip -= dif;
+                break;
+
             case JEQ:
                 if (pop().as.num == 0) {
                     dif = code[ip];
@@ -595,7 +707,7 @@ void VM::run(std::vector<Token> input) {
                     memory.push_back({});
 
                 memory[code[ip]] = pop();
-                ip += 2;
+                ip++;
                 break;
 
             case POP:
@@ -603,7 +715,8 @@ void VM::run(std::vector<Token> input) {
                 break;
 
             case CALL:
-                numClass->symbols[code[ip++]](this);
+                callMethod(code[ip], code[ip + 1]);
+                ip += 2;
         }
     }
 
@@ -611,6 +724,34 @@ void VM::run(std::vector<Token> input) {
         printStack();
     } else {
         printf("empty stack\n");
+    }
+}
+
+void VM::callMethod(uint8_t code, uint8_t depth) {
+    Value v = *(stack.end() - depth - 1);
+
+    // printf("%s %i\n", valueToStr(this, v).c_str(), depth);
+
+    // for (auto it : compiler->symbolsTable) {
+    //     if (it.second == code) {
+    //         printf("%s\n", it.first.c_str());
+    //         break;
+    //     }
+    // }
+
+    std::map<int, std::function<void(VM *vm)> > *symbols;
+
+    if (!v.isObject)
+        symbols = &numClass->symbols;
+    else
+        symbols = &v.as.object->classObject->symbols;
+
+    auto it = symbols->find(code);
+    if (it != symbols->end()) {
+        it->second(this);
+    } else {
+        printf("Missing function\n");
+        exit(0);
     }
 }
 
