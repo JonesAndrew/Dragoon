@@ -1,8 +1,5 @@
-cheese = function {
-    c = 1
-    c = (c + 9) * 5
-    c
+cheese = function(c) {
+    c * c
 }
 
-5 + 5
-cheese()
+cheese(5)

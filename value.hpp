@@ -144,6 +144,7 @@ class Compiler {
 
     void ifBlock();
     void whileBlock();
+    void arguments();
     void createFunction();
     void deleteStatment();
     void statement();
@@ -151,6 +152,8 @@ class Compiler {
     void block();
     void expression();
     void assignment();
+
+    void setVar(std::string name);
 
     void add();
     void sub();
@@ -169,6 +172,8 @@ public:
     ~Compiler();
 
     uint8_t findSymbol(std::string symbol);
+    int findVar(std::string name);
+
     std::vector<uint8_t> *compile(std::vector<Token> in);
 };
 

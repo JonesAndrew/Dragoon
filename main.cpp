@@ -427,6 +427,25 @@ void Compiler::statement() {
     }
 }
 
+void Compiler::arguments() {
+    match(TOKEN_LPAREN);
+
+    if (current.type == TOKEN_RPAREN) {
+        consume();
+        return;
+    }
+
+    setVar(current.value);
+    consume();
+
+    while (current.type != TOKEN_RPAREN) {
+        match(TOKEN_COMMA);
+        setVar(current.value);
+        consume();
+    }
+    consume();
+}
+
 void Compiler::createFunction() {
     match(TOKEN_FUNCTION);
 
@@ -439,6 +458,7 @@ void Compiler::createFunction() {
 
     Compiler fnCompiler(vm, this);
 
+    fnCompiler.arguments();
     fnCompiler.block();
     fnCompiler.code->push_back(RETURN);
 
@@ -469,19 +489,19 @@ uint8_t Compiler::findSymbol(std::string symbol) {
 void Compiler::function() {
     bool method = current.value == "";
 
-    match(TOKEN_SYMBOL_START);
-
-    uint8_t depth = 0;
-
     if (!method) {
         code->push_back(MEM);
 
-        if (vars.find(current.value) == vars.end()) {
+        int var = findVar(current.value);
+        if (var == -1) {
             abort(current.value + " used before init.");
         }
 
-        code->push_back(vars[current.value]);
+        code->push_back(var);
     }
+
+    match(TOKEN_SYMBOL_START);
+    uint8_t depth = 0;
 
     while (current.type != TOKEN_SYMBOL) {
         expression();
@@ -545,6 +565,19 @@ void Compiler::expression() {
     }
 }
 
+int Compiler::findVar(std::string name) {
+    auto result = vars.find(current.value);
+    if (vars.find(current.value) == vars.end()) {
+        // if (parent != nullptr) {
+        //     return parent->findVar(name);
+        // }
+        
+        return -1;
+    }
+
+    return result->second;
+}
+
 void Compiler::assignment() {
     std::string name = current.value;
     consume();
@@ -552,13 +585,18 @@ void Compiler::assignment() {
     match(TOKEN_EQ);
     expression();
 
-    if (vars.find(name) == vars.end()) {
-        vars[name] = varOffset;
+    setVar(name);
+}
+
+void Compiler::setVar(std::string name) {
+    int var = findVar(name);
+    if (var == -1) {
+        vars[name] = var = varOffset;
         varOffset++;
     }
 
     code->push_back(MEMSET);
-    code->push_back(vars[name]);
+    code->push_back(var);
 }
 
 void Compiler::deleteStatment() {
@@ -595,12 +633,12 @@ void Compiler::factor() {
     } else if (current.type == TOKEN_IDENT) {
         code->push_back(MEM);
 
-        if (vars.find(current.value) == vars.end()) {
+        int var = findVar(current.value);
+        if (var == -1) {
             abort(current.value + " used before init.");
         }
 
-        code->push_back(vars[current.value]);
-
+        code->push_back(var);
         consume();
     } else if (current.type == TOKEN_TRUE) {
         code->push_back(MOVB);
@@ -851,13 +889,12 @@ void VM::callMethod(uint8_t code, uint8_t depth) {
 }
 
 void VM::callFunction(uint8_t depth) {
-    Value *args = &(stack.end()[- depth - 1]);
-    for (int i = 0; i < depth + 1; i++)
-        stack.pop_back();
+    Value function = stack.end()[- depth - 1];
+    stack.erase(stack.end() - depth - 1);
 
     pushFrame();
 
-    Function *fn = AS(args[0], Function);
+    Function *fn = AS(function, Function);
 
     ip = &fn->code.front();
     constants = fn->constants;
