@@ -1,5 +1,10 @@
-cheese = function(c) {
-    c * c
+abs = function(a) {
+    if (a < 0) {
+        -a
+    } else {
+        a
+    }
 }
 
-cheese(5)
+c = -5 * 2
+abs(c)

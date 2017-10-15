@@ -110,6 +110,7 @@ enum TokenType {
     TOKEN_FUNCTION,
 
     TOKEN_COMMA,
+    TOKEN_LINE,
 };
 
 struct Token {

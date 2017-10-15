@@ -40,6 +40,9 @@ void initCore(VM &vm) {
     vm.numClass->symbols[vm.compiler->findSymbol("sin")] = [](VM *vm, Value *args) {
         RETURN_NUM(sin(args[0].as.num));
     };
+    vm.numClass->symbols[vm.compiler->findSymbol("print")] = [](VM *vm, Value *args) {
+        printf("%f\n", args[0].as.num);
+    };
 
     vm.strClass->symbols[vm.compiler->findSymbol("+")] = [](VM *vm, Value *args) {
         RETURN_STRING(AS(args[0], String)->value + AS(args[1], String)->value);

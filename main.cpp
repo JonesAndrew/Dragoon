@@ -62,9 +62,10 @@ std::map<TokenType, std::string> TYPE_TO_STRING = {
 
     {TOKEN_WHILE, "TOKEN_WHILE"},
 
-    {TOKEN_COMMA, "TOKEN_COMMA"},
-
     {TOKEN_FUNCTION, "TOKEN_FUNCTION"},
+
+    {TOKEN_COMMA, "TOKEN_COMMA"},
+    {TOKEN_LINE, "TOKEN_LINE"},
 
     {TOKEN_EMPTY, "TOKEN_EMPTY"},
 };
@@ -88,6 +89,8 @@ std::map<char, TokenType> SINGLE_CHAR_TOKENS = {
 
     {'[', TOKEN_LBRACKET},
     {']', TOKEN_RBRACKET},
+
+    {'\n', TOKEN_LINE},
 };
 
 std::map<std::string, TokenType> KEYWORDS = {
@@ -165,7 +168,7 @@ class Tokenizer {
     }
 
     bool isWhiteSpace(char c) {
-        return isspace(c);
+        return c != '\n' && isspace(c);
     }
 
     void skipWhite() {
@@ -422,6 +425,8 @@ void Compiler::statement() {
         assignment();
     } else if (current.type == TOKEN_DELETE) {
         deleteStatment();
+    } else if (current.type == TOKEN_LINE) {
+        consume();
     } else {
         expression();
     }
@@ -566,8 +571,8 @@ void Compiler::expression() {
 }
 
 int Compiler::findVar(std::string name) {
-    auto result = vars.find(current.value);
-    if (vars.find(current.value) == vars.end()) {
+    auto result = vars.find(name);
+    if (vars.find(name) == vars.end()) {
         // if (parent != nullptr) {
         //     return parent->findVar(name);
         // }
@@ -591,7 +596,8 @@ void Compiler::assignment() {
 void Compiler::setVar(std::string name) {
     int var = findVar(name);
     if (var == -1) {
-        vars[name] = var = varOffset;
+        var = varOffset;
+        vars[name] = var;
         varOffset++;
     }
 
@@ -836,6 +842,7 @@ void VM::run(std::vector<Token> input) {
                 break;
 
             case MEMSET:
+                // printf("%i\n", *ip + memoryOffset);
                 memory[*ip + memoryOffset] = pop();
                 ip++;
                 break;
@@ -883,7 +890,15 @@ void VM::callMethod(uint8_t code, uint8_t depth) {
     if (it != symbols->end()) {
         it->second(this, args);
     } else {
-        printf("Missing function on %s\n", valueToStr(this, args[0]).c_str());
+        std::string symbol = "";
+        for (auto it : compiler->symbolsTable) {
+            if (it.second == code) {
+                symbol = it.first;
+                break;
+            } 
+        }
+
+        printf("Missing function %s on %s\n", symbol.c_str(), valueToStr(this, args[0]).c_str());
         exit(0);
     }
 }
