@@ -8,9 +8,10 @@ Value newNum(double n) {
     return v;
 }
 
-String::String(VM* vm, std::string s) {
+String::String(VM* vm, std::string value) :
+    value(value)
+{
     classObject = vm->strClass;
-    value = s;
 }
 
 Value newString(VM* vm, std::string s) {

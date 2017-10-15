@@ -31,7 +31,7 @@ struct Object {
 struct String : public Object {
     std::string value;
 
-    String(VM* vm, std::string s);
+    String(VM* vm, std::string value);
 };
 
 struct List : public Object {
@@ -46,6 +46,9 @@ struct List : public Object {
 
 struct Function : public Object {
     std::vector<uint8_t> code;
+    std::vector<Value> constants;
+
+    int localCount;
 
     Function(VM *vm);
 };
@@ -120,6 +123,7 @@ struct Token {
 
 class Compiler {
     VM *vm;
+    Compiler *parent;
 
     std::vector<Token> input;
     int it;
@@ -129,8 +133,6 @@ class Compiler {
 
     std::map<std::string, int> vars;
     std::vector<uint8_t> *code;
-
-    int varOffset;
 
     void consume();
     void match(TokenType type);
@@ -161,8 +163,9 @@ class Compiler {
 public:
     std::vector<Value> constants;
     std::map<std::string, int> symbolsTable;
+    int varOffset;
 
-    Compiler(VM *vm);
+    Compiler(VM *vm, Compiler *parent);
     ~Compiler();
 
     uint8_t findSymbol(std::string symbol);
@@ -173,9 +176,24 @@ struct ObjectClass {
     std::map<int, std::function<void(VM *vm, Value *args)> > symbols;
 };
 
+struct CallFrame {
+    CallFrame(uint8_t *ip, std::vector<Value> constants, int memorySize) :
+        ip(ip),
+        constants(constants),
+        memorySize(memorySize)
+    {
+    }
+
+    uint8_t *ip;
+    std::vector<Value> constants;
+    int memorySize;
+};
+
 class VM {
     std::vector<Value> memory;
     uint8_t *ip;
+    int memoryOffset;
+    std::vector<Value> constants;
 
 public:
     Compiler *compiler;
@@ -185,6 +203,7 @@ public:
     ObjectClass *functionClass;
 
     std::vector<Value> stack;
+    std::vector<CallFrame> frames;
 
     VM();
     ~VM();
@@ -199,6 +218,9 @@ public:
 
     void callMethod(uint8_t code, uint8_t depth);
     void callFunction(uint8_t depth);
+
+    void pushFrame();
+    void popFrame();
 };
 
 void initCore(VM &vm);

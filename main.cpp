@@ -437,21 +437,31 @@ void Compiler::createFunction() {
     code->push_back(constants.size());
     constants.push_back(func);
 
-    code = &AS(func, Function)->code;
-    block();
-    code->push_back(RETURN);
+    Compiler fnCompiler(vm, this);
 
-    code = temp;
+    fnCompiler.block();
+    fnCompiler.code->push_back(RETURN);
+
+    Function *fn = AS(func, Function);
+    fn->code = std::vector<uint8_t>(*fnCompiler.code);
+    fn->constants = fnCompiler.constants;
+    fn->localCount = fnCompiler.varOffset;
+
+    it = fnCompiler.it;
+    current = fnCompiler.current;
+    next = fnCompiler.next;
 }
 
 uint8_t Compiler::findSymbol(std::string symbol) {
-    auto it = symbolsTable.find(symbol);
+    auto &table = vm->compiler->symbolsTable;
 
-    if (it != symbolsTable.end()) {
+    auto it = table.find(symbol);
+
+    if (it != table.end()) {
         return it->second;
     } else {
-        int size = symbolsTable.size();
-        symbolsTable[symbol] = size;
+        int size = table.size();
+        table[symbol] = size;
         return size;
     }
 }
@@ -525,7 +535,7 @@ void Compiler::expression() {
     }
 
     if (isRelop(current.type)) {
-        int symbol = symbolsTable[current.value];
+        int symbol = findSymbol(current.value);
         consume();
         expression();
 
@@ -564,7 +574,7 @@ void Compiler::add() {
     term();
 
     code->push_back(CALL);
-    code->push_back(symbolsTable["+"]);
+    code->push_back(findSymbol("+"));
     code->push_back(1);
 }
 
@@ -573,7 +583,7 @@ void Compiler::sub() {
     term();
 
     code->push_back(CALL);
-    code->push_back(symbolsTable["-"]);
+    code->push_back(findSymbol("-"));
     code->push_back(1);
 }
 
@@ -638,7 +648,7 @@ void Compiler::mul() {
     factor();
 
     code->push_back(CALL);
-    code->push_back(symbolsTable["*"]);
+    code->push_back(findSymbol("*"));
     code->push_back(1);
 }
 
@@ -647,18 +657,26 @@ void Compiler::div() {
     factor();
 
     code->push_back(CALL);
-    code->push_back(symbolsTable["/"]);
+    code->push_back(findSymbol("/"));
     code->push_back(1);
 }
 
-Compiler::Compiler(VM *vm) :
+Compiler::Compiler(VM *vm, Compiler *parent) :
     vm(vm),
+    parent(parent),
     it(0),
     current(TOKEN_EMPTY),
     next(TOKEN_EMPTY),
     varOffset(0)
 {
     code = new std::vector<uint8_t>();
+
+    if (parent != nullptr) {
+        input = parent->input;
+        it = parent->it;
+        current = parent->current;
+        next = parent->next;
+    }
 }
 
 Compiler::~Compiler() {
@@ -678,12 +696,14 @@ std::vector<uint8_t> *Compiler::compile(std::vector<Token> in) {
 }
 
 VM::VM() {
+    memoryOffset = 0;
+
     numClass = new ObjectClass();
     strClass = new ObjectClass();
     listClass = new ObjectClass();
     functionClass = new ObjectClass();
 
-    compiler = new Compiler(this);
+    compiler = new Compiler(this, nullptr);
 
     initCore(*this);
 }
@@ -739,13 +759,18 @@ void VM::printStack() {
 
 void VM::run(std::vector<Token> input) {
     ip = &compiler->compile(input)->front();
+    constants = compiler->constants;
     uint8_t dif = 0;
+
+    for (int i=0; i<compiler->varOffset; i++) {
+        memory.push_back({});
+    }
 
     while (true) {
         uint8_t c = *ip++;
         switch (c) {
             case MOVB:
-                push(compiler->constants[*ip++]);
+                push(constants[*ip++]);
                 break;
 
             case JUMP:
@@ -768,14 +793,12 @@ void VM::run(std::vector<Token> input) {
                 break;
 
             case MEM:
-                push(memory[*ip++]);
+                push(memory[*ip + memoryOffset]);
+                ip++;
                 break;
 
             case MEMSET:
-                if (*ip == memory.size())
-                    memory.push_back({});
-
-                memory[*ip] = pop();
+                memory[*ip + memoryOffset] = pop();
                 ip++;
                 break;
 
@@ -797,7 +820,10 @@ void VM::run(std::vector<Token> input) {
                 break;
 
             case RETURN:
-                return;
+                if (frames.empty())
+                    return;
+                else
+                    popFrame();
                 break;
         }
     }
@@ -829,7 +855,35 @@ void VM::callFunction(uint8_t depth) {
     for (int i = 0; i < depth + 1; i++)
         stack.pop_back();
 
-    ip = &AS(args[0], Function)->code.front();
+    pushFrame();
+
+    Function *fn = AS(args[0], Function);
+
+    ip = &fn->code.front();
+    constants = fn->constants;
+    memoryOffset = memory.size();
+
+    for (int i=0; i<fn->localCount; i++) {
+        memory.push_back({});
+    }    
+}
+
+void VM::pushFrame() {
+    frames.push_back({ip, constants, memoryOffset});
+}
+
+void VM::popFrame() {
+    int remove = memory.size() - memoryOffset;
+    for (int i=0; i<remove; i++) {
+        memory.pop_back();
+    }
+
+    auto &frame = frames.back();
+    ip = frame.ip;
+    constants = frame.constants;
+    memoryOffset = frame.memorySize;
+
+    frames.pop_back();
 }
 
 int main(int argc, char** argv) {
