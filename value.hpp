@@ -30,6 +30,8 @@ struct Object {
 
 struct String : public Object {
     std::string value;
+
+    String(VM* vm, std::string s);
 };
 
 struct List : public Object {
@@ -38,7 +40,14 @@ struct List : public Object {
     int capacity;
     int size;
 
+    List(VM *vm);
     void add(Value v);
+};
+
+struct Function : public Object {
+    std::vector<uint8_t> code;
+
+    Function(VM *vm);
 };
 
 struct Value {
@@ -50,15 +59,9 @@ struct Value {
 };
 
 Value newNum(double n);
-
-String *initString(VM* vm, std::string s);
-
 Value newString(VM* vm, std::string s);
-
-List *initList(VM *vm);
-
 Value newList(VM *vm);
-
+Value newFunction(VM *vm);
 
 enum TokenType {
     TOKEN_EMPTY,
@@ -101,6 +104,8 @@ enum TokenType {
 
     TOKEN_WHILE,
 
+    TOKEN_FUNCTION,
+
     TOKEN_COMMA,
 };
 
@@ -123,7 +128,7 @@ class Compiler {
     Token next;
 
     std::map<std::string, int> vars;
-    std::vector<uint8_t> code;
+    std::vector<uint8_t> *code;
 
     int varOffset;
 
@@ -137,6 +142,7 @@ class Compiler {
 
     void ifBlock();
     void whileBlock();
+    void createFunction();
     void deleteStatment();
     void statement();
     void function();
@@ -157,9 +163,10 @@ public:
     std::map<std::string, int> symbolsTable;
 
     Compiler(VM *vm);
+    ~Compiler();
 
     uint8_t findSymbol(std::string symbol);
-    std::vector<uint8_t> compile(std::vector<Token> in);
+    std::vector<uint8_t> *compile(std::vector<Token> in);
 };
 
 struct ObjectClass {
@@ -168,16 +175,19 @@ struct ObjectClass {
 
 class VM {
     std::vector<Value> memory;
+    uint8_t *ip;
 
 public:
     Compiler *compiler;
     ObjectClass *numClass;
     ObjectClass *strClass;
     ObjectClass *listClass;
+    ObjectClass *functionClass;
 
     std::vector<Value> stack;
 
     VM();
+    ~VM();
 
     Value pop();
 
@@ -188,6 +198,7 @@ public:
     void run(std::vector<Token> input);
 
     void callMethod(uint8_t code, uint8_t depth);
+    void callFunction(uint8_t depth);
 };
 
 void initCore(VM &vm);

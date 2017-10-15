@@ -8,31 +8,25 @@ Value newNum(double n) {
     return v;
 }
 
-String *initString(VM* vm, std::string s) {
-    String *str = new String();
-    str->classObject = vm->strClass;
-    str->value = s;
-
-    return str;
+String::String(VM* vm, std::string s) {
+    classObject = vm->strClass;
+    value = s;
 }
 
 Value newString(VM* vm, std::string s) {
     Value v;
     v.isObject = true;
-    v.as.object = initString(vm, s);
+    v.as.object = new String(vm, s);
 
     return v;
 }
 
-List *initList(VM *vm) {
-    List *list = new List();
-    list->classObject = vm->listClass;
+List::List(VM *vm) {
+    classObject = vm->listClass;
 
-    list->size = 0;
-    list->capacity = 8;
-    list->items = new Value[list->capacity];
-
-    return list;
+    size = 0;
+    capacity = 8;
+    items = new Value[capacity];
 }
 
 void List::add(Value v) {
@@ -54,7 +48,19 @@ void List::add(Value v) {
 Value newList(VM *vm) {
     Value v;
     v.isObject = true;
-    v.as.object = initList(vm);
+    v.as.object = new List(vm);
+
+    return v;
+}
+
+Function::Function(VM *vm) {
+    classObject = vm->functionClass;
+}
+
+Value newFunction(VM *vm) {
+    Value v;
+    v.isObject = true;
+    v.as.object = new Function(vm);
 
     return v;
 }

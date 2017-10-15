@@ -1,1 +1,5 @@
-5 < 3
+cheese = function {
+    5 * 5
+}
+
+cheese()

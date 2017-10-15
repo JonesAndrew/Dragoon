@@ -22,8 +22,11 @@ enum Instruction {
     MUL,
 
     CALL,
+    CALL_FUNC,
 
     DEL,
+
+    RETURN,
 };
 
 std::map<TokenType, std::string> TYPE_TO_STRING = {
@@ -61,6 +64,8 @@ std::map<TokenType, std::string> TYPE_TO_STRING = {
 
     {TOKEN_COMMA, "TOKEN_COMMA"},
 
+    {TOKEN_FUNCTION, "TOKEN_FUNCTION"},
+
     {TOKEN_EMPTY, "TOKEN_EMPTY"},
 };
 
@@ -89,6 +94,8 @@ std::map<std::string, TokenType> KEYWORDS = {
     {"if", TOKEN_IF},
     {"else", TOKEN_ELSE},
     {"while", TOKEN_WHILE},
+
+    {"function", TOKEN_FUNCTION},
 
     {"true", TOKEN_TRUE},
     {"false", TOKEN_FALSE},
@@ -216,8 +223,8 @@ class Tokenizer {
         return value;
     }
 
-    void function(std::string name) {
-        add(TOKEN_SYMBOL_START);
+    void function(std::string name, bool method = true) {
+        add(TOKEN_SYMBOL_START, method ? "" : name);
 
         match('(');
 
@@ -264,14 +271,15 @@ public:
             if (KEYWORDS.find(name) != KEYWORDS.end()) {
                 add(KEYWORDS[name]);
             } else if (lookAhead == '(') {
-                // Global Function
-                function(name);
+                // Function
+                function(name, false);
             } else {
                 add(TOKEN_IDENT, name);
             }
 
             skipWhite();
         } else if (lookAhead == '.') {
+            // Method
             getChar();
             
             std::string name = getName();
@@ -358,20 +366,20 @@ void Compiler::ifBlock() {
     expression();
     match(TOKEN_RPAREN);
 
-    code.push_back(JEQ);
-    int start = code.size();
-    code.push_back(0);
+    code->push_back(JEQ);
+    int start = code->size();
+    code->push_back(0);
 
     block();
 
     if (current.type == TOKEN_ELSE) {
         match(TOKEN_ELSE);
 
-        code.push_back(JUMP);
-        int elseStart = code.size();
-        code.push_back(0);
+        code->push_back(JUMP);
+        int elseStart = code->size();
+        code->push_back(0);
 
-        code[start] = code.size() - start;
+        (*code)[start] = code->size() - start;
 
         if (current.type == TOKEN_IF) {
             ifBlock();
@@ -379,30 +387,30 @@ void Compiler::ifBlock() {
             block();
         }
 
-        code[elseStart] = code.size() - elseStart;
+        (*code)[elseStart] = code->size() - elseStart;
     } else {
-        code[start] = code.size() - start;
+        (*code)[start] = code->size() - start;
     }
 }
 
 void Compiler::whileBlock() {
-    int ifStart = code.size();
+    int ifStart = code->size();
 
     match(TOKEN_WHILE);
     match(TOKEN_LPAREN);
     expression();
     match(TOKEN_RPAREN);
 
-    code.push_back(JEQ);
-    int start = code.size();
-    code.push_back(0);
+    code->push_back(JEQ);
+    int start = code->size();
+    code->push_back(0);
 
     block();
 
-    code.push_back(JUMP_BACK);
-    code.push_back(code.size() - ifStart);
+    code->push_back(JUMP_BACK);
+    code->push_back(code->size() - ifStart);
 
-    code[start] = code.size() - start;
+    (*code)[start] = code->size() - start;
 }
 
 void Compiler::statement() {
@@ -412,11 +420,28 @@ void Compiler::statement() {
         whileBlock();
     } else if (next.type == TOKEN_EQ) {
         assignment();
-    } else if(current.type == TOKEN_DELETE) {
+    } else if (current.type == TOKEN_DELETE) {
         deleteStatment();
     } else {
         expression();
     }
+}
+
+void Compiler::createFunction() {
+    match(TOKEN_FUNCTION);
+
+    auto temp = code;
+    Value func = newFunction(vm);
+
+    code->push_back(MOVB);
+    code->push_back(constants.size());
+    constants.push_back(func);
+
+    code = &AS(func, Function)->code;
+    block();
+    code->push_back(RETURN);
+
+    code = temp;
 }
 
 uint8_t Compiler::findSymbol(std::string symbol) {
@@ -432,9 +457,21 @@ uint8_t Compiler::findSymbol(std::string symbol) {
 }
 
 void Compiler::function() {
+    bool method = current.value == "";
+
     match(TOKEN_SYMBOL_START);
 
     uint8_t depth = 0;
+
+    if (!method) {
+        code->push_back(MEM);
+
+        if (vars.find(current.value) == vars.end()) {
+            abort(current.value + " used before init.");
+        }
+
+        code->push_back(vars[current.value]);
+    }
 
     while (current.type != TOKEN_SYMBOL) {
         expression();
@@ -444,9 +481,14 @@ void Compiler::function() {
         depth++;
     }
 
-    code.push_back(CALL);
-    code.push_back(findSymbol(current.value));
-    code.push_back(depth);
+    if (method) {
+        code->push_back(CALL);
+        code->push_back(findSymbol(current.value));
+        code->push_back(depth);
+    } else {
+        code->push_back(CALL_FUNC);
+        code->push_back(depth);
+    }
 
     match(TOKEN_SYMBOL);
 }
@@ -461,8 +503,8 @@ void Compiler::block() {
 
 void Compiler::expression() {
     if (isAddop(current.type)) {
-        code.push_back(MOVB);
-        code.push_back(constants.size());
+        code->push_back(MOVB);
+        code->push_back(constants.size());
         constants.push_back(newNum(0));
     } else {
         term();
@@ -487,9 +529,9 @@ void Compiler::expression() {
         consume();
         expression();
 
-        code.push_back(CALL);
-        code.push_back(symbol);
-        code.push_back(1);
+        code->push_back(CALL);
+        code->push_back(symbol);
+        code->push_back(1);
     }
 }
 
@@ -505,8 +547,8 @@ void Compiler::assignment() {
         varOffset++;
     }
 
-    code.push_back(MEMSET);
-    code.push_back(vars[name]);
+    code->push_back(MEMSET);
+    code->push_back(vars[name]);
 }
 
 void Compiler::deleteStatment() {
@@ -514,25 +556,25 @@ void Compiler::deleteStatment() {
 
     factor();
 
-    code.push_back(DEL);
+    code->push_back(DEL);
 }
 
 void Compiler::add() {
     match(TOKEN_ADD);
     term();
 
-    code.push_back(CALL);
-    code.push_back(symbolsTable["+"]);
-    code.push_back(1);
+    code->push_back(CALL);
+    code->push_back(symbolsTable["+"]);
+    code->push_back(1);
 }
 
 void Compiler::sub() {
     match(TOKEN_SUB);
     term();
 
-    code.push_back(CALL);
-    code.push_back(symbolsTable["-"]);
-    code.push_back(1);
+    code->push_back(CALL);
+    code->push_back(symbolsTable["-"]);
+    code->push_back(1);
 }
 
 void Compiler::factor() {
@@ -541,55 +583,53 @@ void Compiler::factor() {
         expression();
         match(TOKEN_RPAREN);
     } else if (current.type == TOKEN_IDENT) {
-        code.push_back(MEM);
+        code->push_back(MEM);
 
         if (vars.find(current.value) == vars.end()) {
             abort(current.value + " used before init.");
         }
 
-        code.push_back(vars[current.value]);
+        code->push_back(vars[current.value]);
 
         consume();
     } else if (current.type == TOKEN_TRUE) {
-        code.push_back(MOVB);
-        code.push_back(constants.size());
+        code->push_back(MOVB);
+        code->push_back(constants.size());
         constants.push_back(newNum(1));
 
         consume();
     } else if (current.type == TOKEN_FALSE) {
-        code.push_back(MOVB);
-        code.push_back(constants.size());
+        code->push_back(MOVB);
+        code->push_back(constants.size());
         constants.push_back(newNum(0));
 
         consume();
     } else if (current.type == TOKEN_NUMBER) {
-        code.push_back(MOVB);
-        code.push_back(constants.size());
+        code->push_back(MOVB);
+        code->push_back(constants.size());
         constants.push_back(newNum(std::stof(current.value)));
 
         consume();
     } else if (current.type == TOKEN_STRING) {
-        code.push_back(MOVB);
-        code.push_back(constants.size());
+        code->push_back(MOVB);
+        code->push_back(constants.size());
         constants.push_back(newString(vm, current.value));
 
         consume();
     } else if (current.type == TOKEN_LBRACKET) {
         consume();
 
-        code.push_back(MOVB);
-        code.push_back(constants.size());
+        code->push_back(MOVB);
+        code->push_back(constants.size());
         constants.push_back(newList(vm));
 
         match(TOKEN_RBRACKET);
     } else if (current.type == TOKEN_SYMBOL_START) {
         function();
+    } else if (current.type == TOKEN_FUNCTION) {
+        createFunction();
     } else {
         abort("Unexpected token " + TYPE_TO_STRING[current.type] + ".");
-    }
-
-    if (current.type == TOKEN_SYMBOL_START) {
-        function();
     }
 }
 
@@ -597,18 +637,18 @@ void Compiler::mul() {
     match(TOKEN_MUL);
     factor();
 
-    code.push_back(CALL);
-    code.push_back(symbolsTable["*"]);
-    code.push_back(1);
+    code->push_back(CALL);
+    code->push_back(symbolsTable["*"]);
+    code->push_back(1);
 }
 
 void Compiler::div() {
     match(TOKEN_DIV);
     factor();
 
-    code.push_back(CALL);
-    code.push_back(symbolsTable["/"]);
-    code.push_back(1);
+    code->push_back(CALL);
+    code->push_back(symbolsTable["/"]);
+    code->push_back(1);
 }
 
 Compiler::Compiler(VM *vm) :
@@ -618,15 +658,21 @@ Compiler::Compiler(VM *vm) :
     next(TOKEN_EMPTY),
     varOffset(0)
 {
+    code = new std::vector<uint8_t>();
 }
 
-std::vector<uint8_t> Compiler::compile(std::vector<Token> in) {
+Compiler::~Compiler() {
+    delete code;
+}
+
+std::vector<uint8_t> *Compiler::compile(std::vector<Token> in) {
     input = in;
 
     consume();
     while (it <= input.size()) {
         statement();
     }
+    code->push_back(RETURN);
 
     return code;
 }
@@ -635,10 +681,20 @@ VM::VM() {
     numClass = new ObjectClass();
     strClass = new ObjectClass();
     listClass = new ObjectClass();
+    functionClass = new ObjectClass();
 
     compiler = new Compiler(this);
 
     initCore(*this);
+}
+
+VM::~VM() {
+    delete numClass;
+    delete strClass;
+    delete listClass;
+    delete functionClass;
+
+    delete compiler;
 }
 
 Value VM::pop() {
@@ -667,44 +723,44 @@ std::string valueToStr(VM *vm, Value v) {
         }
 
         return final + "]";
+    } else if (v.as.object->classObject == vm->functionClass) {
+        return "function";
     }
 
     return AS(v, String)->value;
 }
 
 void VM::printStack() {
-    printf("stack %lu: %s\n", stack.size(), valueToStr(this, pop()).c_str());
+    if (stack.size() == 0) return;
 
-    if (stack.size() > 0) {
-        printStack();
-    }
+    printf("stack %lu: %s\n", stack.size(), valueToStr(this, pop()).c_str());
+    printStack();
 }
 
 void VM::run(std::vector<Token> input) {
-    std::vector<uint8_t> code = compiler->compile(input);
-    int ip = 0;
-    int len = code.size();
-    int dif = 0;
+    ip = &compiler->compile(input)->front();
+    uint8_t dif = 0;
 
-    while (ip < len) {
-        switch (code[ip++]) {
+    while (true) {
+        uint8_t c = *ip++;
+        switch (c) {
             case MOVB:
-                push(compiler->constants[code[ip++]]);
+                push(compiler->constants[*ip++]);
                 break;
 
             case JUMP:
-                dif = code[ip];
+                dif = *ip;
                 ip += dif;
                 break;
 
             case JUMP_BACK:
-                dif = code[ip];
+                dif = *ip;
                 ip -= dif;
                 break;
 
             case JEQ:
                 if (pop().as.num == 0) {
-                    dif = code[ip];
+                    dif = *ip;
                     ip += dif;
                 } else {
                     ip++;
@@ -712,14 +768,14 @@ void VM::run(std::vector<Token> input) {
                 break;
 
             case MEM:
-                push(memory[code[ip++]]);
+                push(memory[*ip++]);
                 break;
 
             case MEMSET:
-                if (code[ip] == memory.size())
+                if (*ip == memory.size())
                     memory.push_back({});
 
-                memory[code[ip]] = pop();
+                memory[*ip] = pop();
                 ip++;
                 break;
 
@@ -728,20 +784,22 @@ void VM::run(std::vector<Token> input) {
                 break;
 
             case CALL:
-                callMethod(code[ip], code[ip + 1]);
+                callMethod(*ip, *(ip + 1));
                 ip += 2;
+                break;
+
+            case CALL_FUNC:
+                callFunction(*ip++);
                 break;
 
             case DEL:
                 delete pop().as.object;
                 break;
-        }
-    }
 
-    if (stack.size() > 0) {
-        printStack();
-    } else {
-        printf("empty stack\n");
+            case RETURN:
+                return;
+                break;
+        }
     }
 }
 
@@ -766,6 +824,14 @@ void VM::callMethod(uint8_t code, uint8_t depth) {
     }
 }
 
+void VM::callFunction(uint8_t depth) {
+    Value *args = &(stack.end()[- depth - 1]);
+    for (int i = 0; i < depth + 1; i++)
+        stack.pop_back();
+
+    ip = &AS(args[0], Function)->code.front();
+}
+
 int main(int argc, char** argv) {
     if (argc < 2) {
         printf("Pass filename as argument.\n");
@@ -781,6 +847,7 @@ int main(int argc, char** argv) {
 
     VM vm;
     vm.run(tokens);
+    vm.printStack();
 
     return 0;
 }
