@@ -111,6 +111,8 @@ enum TokenType {
 
     TOKEN_COMMA,
     TOKEN_LINE,
+
+    TOKEN_RETURN,
 };
 
 struct Token {
@@ -147,7 +149,8 @@ class Compiler {
     void whileBlock();
     void arguments();
     void createFunction();
-    void deleteStatment();
+    void deleteStatement();
+    void returnStatement();
     void statement();
     void function();
     void block();

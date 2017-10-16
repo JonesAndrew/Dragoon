@@ -68,6 +68,7 @@ std::map<TokenType, std::string> TYPE_TO_STRING = {
     {TOKEN_LINE, "TOKEN_LINE"},
 
     {TOKEN_EMPTY, "TOKEN_EMPTY"},
+    {TOKEN_RETURN, "TOKEN_RETURN"},
 };
 
 std::map<char, TokenType> SINGLE_CHAR_TOKENS = {
@@ -104,6 +105,8 @@ std::map<std::string, TokenType> KEYWORDS = {
     {"false", TOKEN_FALSE},
 
     {"delete", TOKEN_DELETE},
+
+    {"return", TOKEN_RETURN},
 };
 
 void error(std::string err) {
@@ -424,9 +427,11 @@ void Compiler::statement() {
     } else if (next.type == TOKEN_EQ) {
         assignment();
     } else if (current.type == TOKEN_DELETE) {
-        deleteStatment();
+        deleteStatement();
     } else if (current.type == TOKEN_LINE) {
         consume();
+    } else if (current.type == TOKEN_RETURN) {
+        returnStatement();
     } else {
         expression();
     }
@@ -605,12 +610,26 @@ void Compiler::setVar(std::string name) {
     code->push_back(var);
 }
 
-void Compiler::deleteStatment() {
+void Compiler::deleteStatement() {
     match(TOKEN_DELETE);
 
     factor();
 
     code->push_back(DEL);
+}
+
+void Compiler::returnStatement() {
+    match(TOKEN_RETURN);
+
+    if (current.type == TOKEN_LINE) {
+        code->push_back(MOVB);
+        code->push_back(constants.size());
+        constants.push_back(newNum(0));
+    } else {
+        expression();
+    }
+
+    code->push_back(RETURN);
 }
 
 void Compiler::add() {

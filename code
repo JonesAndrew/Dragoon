@@ -1,9 +1,9 @@
 abs = function(a) {
     if (a < 0) {
-        -a
-    } else {
-        a
+        return -a
     }
+
+    return a
 }
 
 c = -5 * 2
