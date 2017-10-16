@@ -1,7 +1,13 @@
-# Language
+# Hello World
 
 ```
-"Hello" + " World"
+print("Hello World")
+
+square = function(num) {
+    return num * num
+}
+
+print(square(10))
 
 numbers = []
 
@@ -10,6 +16,5 @@ while (i < 5) {
     numbers.add(i)
     i = i + 1
 }
-
-numbers.size()
+print(numbers)
 ```

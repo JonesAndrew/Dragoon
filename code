@@ -1,10 +1,16 @@
-abs = function(a) {
-    if (a < 0) {
-        return -a
-    }
+print("Hello World")
 
-    return a
+square = function(num) {
+    return num * num
 }
 
-c = -5 * 2
-abs(c)
+print(square(10))
+
+numbers = []
+
+i = 0
+while (i < 5) {
+    numbers.add(i)
+    i = i + 1
+}
+print(numbers)

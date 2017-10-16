@@ -7,6 +7,11 @@
 #define RETURN_STRING(val) vm->push(newString(vm, val))
 
 void initCore(VM &vm) {
+    AS(vm.memory[0], Function)->foreign = true;
+    vm.functions[AS(vm.memory[0], Function)] = [](VM *vm, Value *args) {
+        printf("%s\n", valueToStr(vm, args[1]).c_str());
+    };
+
     vm.numClass->symbols[vm.compiler->findSymbol("<")] = [](VM *vm, Value *args) {
         RETURN_NUM(args[0].as.num < args[1].as.num);
     };
@@ -40,9 +45,6 @@ void initCore(VM &vm) {
     vm.numClass->symbols[vm.compiler->findSymbol("sin")] = [](VM *vm, Value *args) {
         RETURN_NUM(sin(args[0].as.num));
     };
-    vm.numClass->symbols[vm.compiler->findSymbol("print")] = [](VM *vm, Value *args) {
-        printf("%f\n", args[0].as.num);
-    };
 
     vm.strClass->symbols[vm.compiler->findSymbol("+")] = [](VM *vm, Value *args) {
         RETURN_STRING(AS(args[0], String)->value + AS(args[1], String)->value);
@@ -63,7 +65,7 @@ void initCore(VM &vm) {
             index = list->size + index;
 
         if (index < 0 || index >= list->size)
-            printf("YOU DONE FUCKED UP\n");
+            printf("Index out of bounds\n");
 
         RETURN(list->items[index]);
     };

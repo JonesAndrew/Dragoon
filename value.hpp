@@ -50,6 +50,8 @@ struct Function : public Object {
 
     int localCount;
 
+    bool foreign;
+
     Function(VM *vm);
 };
 
@@ -135,7 +137,7 @@ class Compiler {
     Token next;
 
     std::map<std::string, int> vars;
-    std::vector<uint8_t> *code;
+    std::vector<uint8_t> code;
 
     void consume();
     void match(TokenType type);
@@ -178,7 +180,7 @@ public:
     uint8_t findSymbol(std::string symbol);
     int findVar(std::string name);
 
-    std::vector<uint8_t> *compile(std::vector<Token> in);
+    std::vector<uint8_t> compile(std::vector<Token> in);
 };
 
 struct ObjectClass {
@@ -199,17 +201,20 @@ struct CallFrame {
 };
 
 class VM {
-    std::vector<Value> memory;
     uint8_t *ip;
     int memoryOffset;
     std::vector<Value> constants;
 
 public:
+    std::vector<Value> memory;
+    
     Compiler *compiler;
     ObjectClass *numClass;
     ObjectClass *strClass;
     ObjectClass *listClass;
     ObjectClass *functionClass;
+
+    std::map<Function *, std::function<void(VM *vm, Value *args)> > functions;
 
     std::vector<Value> stack;
     std::vector<CallFrame> frames;
@@ -223,7 +228,7 @@ public:
 
     void printStack();
 
-    void run(std::vector<Token> input);
+    void run(std::string code);
 
     void callMethod(uint8_t code, uint8_t depth);
     void callFunction(uint8_t depth);

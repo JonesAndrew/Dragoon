@@ -372,20 +372,20 @@ void Compiler::ifBlock() {
     expression();
     match(TOKEN_RPAREN);
 
-    code->push_back(JEQ);
-    int start = code->size();
-    code->push_back(0);
+    code.push_back(JEQ);
+    int start = code.size();
+    code.push_back(0);
 
     block();
 
     if (current.type == TOKEN_ELSE) {
         match(TOKEN_ELSE);
 
-        code->push_back(JUMP);
-        int elseStart = code->size();
-        code->push_back(0);
+        code.push_back(JUMP);
+        int elseStart = code.size();
+        code.push_back(0);
 
-        (*code)[start] = code->size() - start;
+        code[start] = code.size() - start;
 
         if (current.type == TOKEN_IF) {
             ifBlock();
@@ -393,30 +393,30 @@ void Compiler::ifBlock() {
             block();
         }
 
-        (*code)[elseStart] = code->size() - elseStart;
+        code[elseStart] = code.size() - elseStart;
     } else {
-        (*code)[start] = code->size() - start;
+        code[start] = code.size() - start;
     }
 }
 
 void Compiler::whileBlock() {
-    int ifStart = code->size();
+    int ifStart = code.size();
 
     match(TOKEN_WHILE);
     match(TOKEN_LPAREN);
     expression();
     match(TOKEN_RPAREN);
 
-    code->push_back(JEQ);
-    int start = code->size();
-    code->push_back(0);
+    code.push_back(JEQ);
+    int start = code.size();
+    code.push_back(0);
 
     block();
 
-    code->push_back(JUMP_BACK);
-    code->push_back(code->size() - ifStart);
+    code.push_back(JUMP_BACK);
+    code.push_back(code.size() - ifStart);
 
-    (*code)[start] = code->size() - start;
+    code[start] = code.size() - start;
 }
 
 void Compiler::statement() {
@@ -462,18 +462,21 @@ void Compiler::createFunction() {
     auto temp = code;
     Value func = newFunction(vm);
 
-    code->push_back(MOVB);
-    code->push_back(constants.size());
+    code.push_back(MOVB);
+    code.push_back(constants.size());
     constants.push_back(func);
 
     Compiler fnCompiler(vm, this);
 
     fnCompiler.arguments();
     fnCompiler.block();
-    fnCompiler.code->push_back(RETURN);
+    fnCompiler.code.push_back(MOVB);
+    fnCompiler.code.push_back(constants.size());
+    fnCompiler.constants.push_back(newNum(0));
+    fnCompiler.code.push_back(RETURN);
 
     Function *fn = AS(func, Function);
-    fn->code = std::vector<uint8_t>(*fnCompiler.code);
+    fn->code = std::vector<uint8_t>(fnCompiler.code);
     fn->constants = fnCompiler.constants;
     fn->localCount = fnCompiler.varOffset;
 
@@ -500,14 +503,14 @@ void Compiler::function() {
     bool method = current.value == "";
 
     if (!method) {
-        code->push_back(MEM);
+        code.push_back(MEM);
 
         int var = findVar(current.value);
         if (var == -1) {
             abort(current.value + " used before init.");
         }
 
-        code->push_back(var);
+        code.push_back(var);
     }
 
     match(TOKEN_SYMBOL_START);
@@ -522,12 +525,12 @@ void Compiler::function() {
     }
 
     if (method) {
-        code->push_back(CALL);
-        code->push_back(findSymbol(current.value));
-        code->push_back(depth);
+        code.push_back(CALL);
+        code.push_back(findSymbol(current.value));
+        code.push_back(depth);
     } else {
-        code->push_back(CALL_FUNC);
-        code->push_back(depth);
+        code.push_back(CALL_FUNC);
+        code.push_back(depth);
     }
 
     match(TOKEN_SYMBOL);
@@ -543,8 +546,8 @@ void Compiler::block() {
 
 void Compiler::expression() {
     if (isAddop(current.type)) {
-        code->push_back(MOVB);
-        code->push_back(constants.size());
+        code.push_back(MOVB);
+        code.push_back(constants.size());
         constants.push_back(newNum(0));
     } else {
         term();
@@ -569,9 +572,9 @@ void Compiler::expression() {
         consume();
         expression();
 
-        code->push_back(CALL);
-        code->push_back(symbol);
-        code->push_back(1);
+        code.push_back(CALL);
+        code.push_back(symbol);
+        code.push_back(1);
     }
 }
 
@@ -606,8 +609,8 @@ void Compiler::setVar(std::string name) {
         varOffset++;
     }
 
-    code->push_back(MEMSET);
-    code->push_back(var);
+    code.push_back(MEMSET);
+    code.push_back(var);
 }
 
 void Compiler::deleteStatement() {
@@ -615,39 +618,39 @@ void Compiler::deleteStatement() {
 
     factor();
 
-    code->push_back(DEL);
+    code.push_back(DEL);
 }
 
 void Compiler::returnStatement() {
     match(TOKEN_RETURN);
 
     if (current.type == TOKEN_LINE) {
-        code->push_back(MOVB);
-        code->push_back(constants.size());
+        code.push_back(MOVB);
+        code.push_back(constants.size());
         constants.push_back(newNum(0));
     } else {
         expression();
     }
 
-    code->push_back(RETURN);
+    code.push_back(RETURN);
 }
 
 void Compiler::add() {
     match(TOKEN_ADD);
     term();
 
-    code->push_back(CALL);
-    code->push_back(findSymbol("+"));
-    code->push_back(1);
+    code.push_back(CALL);
+    code.push_back(findSymbol("+"));
+    code.push_back(1);
 }
 
 void Compiler::sub() {
     match(TOKEN_SUB);
     term();
 
-    code->push_back(CALL);
-    code->push_back(findSymbol("-"));
-    code->push_back(1);
+    code.push_back(CALL);
+    code.push_back(findSymbol("-"));
+    code.push_back(1);
 }
 
 void Compiler::factor() {
@@ -656,44 +659,44 @@ void Compiler::factor() {
         expression();
         match(TOKEN_RPAREN);
     } else if (current.type == TOKEN_IDENT) {
-        code->push_back(MEM);
+        code.push_back(MEM);
 
         int var = findVar(current.value);
         if (var == -1) {
             abort(current.value + " used before init.");
         }
 
-        code->push_back(var);
+        code.push_back(var);
         consume();
     } else if (current.type == TOKEN_TRUE) {
-        code->push_back(MOVB);
-        code->push_back(constants.size());
+        code.push_back(MOVB);
+        code.push_back(constants.size());
         constants.push_back(newNum(1));
 
         consume();
     } else if (current.type == TOKEN_FALSE) {
-        code->push_back(MOVB);
-        code->push_back(constants.size());
+        code.push_back(MOVB);
+        code.push_back(constants.size());
         constants.push_back(newNum(0));
 
         consume();
     } else if (current.type == TOKEN_NUMBER) {
-        code->push_back(MOVB);
-        code->push_back(constants.size());
+        code.push_back(MOVB);
+        code.push_back(constants.size());
         constants.push_back(newNum(std::stof(current.value)));
 
         consume();
     } else if (current.type == TOKEN_STRING) {
-        code->push_back(MOVB);
-        code->push_back(constants.size());
+        code.push_back(MOVB);
+        code.push_back(constants.size());
         constants.push_back(newString(vm, current.value));
 
         consume();
     } else if (current.type == TOKEN_LBRACKET) {
         consume();
 
-        code->push_back(MOVB);
-        code->push_back(constants.size());
+        code.push_back(MOVB);
+        code.push_back(constants.size());
         constants.push_back(newList(vm));
 
         match(TOKEN_RBRACKET);
@@ -710,18 +713,18 @@ void Compiler::mul() {
     match(TOKEN_MUL);
     factor();
 
-    code->push_back(CALL);
-    code->push_back(findSymbol("*"));
-    code->push_back(1);
+    code.push_back(CALL);
+    code.push_back(findSymbol("*"));
+    code.push_back(1);
 }
 
 void Compiler::div() {
     match(TOKEN_DIV);
     factor();
 
-    code->push_back(CALL);
-    code->push_back(findSymbol("/"));
-    code->push_back(1);
+    code.push_back(CALL);
+    code.push_back(findSymbol("/"));
+    code.push_back(1);
 }
 
 Compiler::Compiler(VM *vm, Compiler *parent) :
@@ -732,7 +735,7 @@ Compiler::Compiler(VM *vm, Compiler *parent) :
     next(TOKEN_EMPTY),
     varOffset(0)
 {
-    code = new std::vector<uint8_t>();
+    code = std::vector<uint8_t>();
 
     if (parent != nullptr) {
         input = parent->input;
@@ -743,17 +746,18 @@ Compiler::Compiler(VM *vm, Compiler *parent) :
 }
 
 Compiler::~Compiler() {
-    delete code;
 }
 
-std::vector<uint8_t> *Compiler::compile(std::vector<Token> in) {
+std::vector<uint8_t> Compiler::compile(std::vector<Token> in) {
+    code = std::vector<uint8_t>();
     input = in;
+    it = 0;
 
     consume();
     while (it <= input.size()) {
         statement();
     }
-    code->push_back(RETURN);
+    code.push_back(RETURN);
 
     return code;
 }
@@ -767,6 +771,10 @@ VM::VM() {
     functionClass = new ObjectClass();
 
     compiler = new Compiler(this, nullptr);
+
+    run(
+        "print = function() {}"
+    );
 
     initCore(*this);
 }
@@ -820,12 +828,16 @@ void VM::printStack() {
     printStack();
 }
 
-void VM::run(std::vector<Token> input) {
-    ip = &compiler->compile(input)->front();
+void VM::run(std::string code) {
+    Tokenizer tz(code);
+    auto tokens = tz.tokenize();
+
+    auto instructions = compiler->compile(tokens);
+    ip = &instructions.front();
     constants = compiler->constants;
     uint8_t dif = 0;
 
-    for (int i=0; i<compiler->varOffset; i++) {
+    for (int i=memory.size(); i<compiler->varOffset; i++) {
         memory.push_back({});
     }
 
@@ -861,7 +873,6 @@ void VM::run(std::vector<Token> input) {
                 break;
 
             case MEMSET:
-                // printf("%i\n", *ip + memoryOffset);
                 memory[*ip + memoryOffset] = pop();
                 ip++;
                 break;
@@ -924,19 +935,28 @@ void VM::callMethod(uint8_t code, uint8_t depth) {
 
 void VM::callFunction(uint8_t depth) {
     Value function = stack.end()[- depth - 1];
-    stack.erase(stack.end() - depth - 1);
-
-    pushFrame();
 
     Function *fn = AS(function, Function);
 
-    ip = &fn->code.front();
-    constants = fn->constants;
-    memoryOffset = memory.size();
+    if (!fn->foreign) {
+        pushFrame();
+        
+        stack.erase(stack.end() - depth - 1);
 
-    for (int i=0; i<fn->localCount; i++) {
-        memory.push_back({});
-    }    
+        ip = &fn->code.front();
+        constants = fn->constants;
+        memoryOffset = memory.size();
+
+        for (int i=0; i<fn->localCount; i++) {
+            memory.push_back({});
+        }
+    } else {
+        Value *args = &(stack.end()[- depth - 1]);
+        for (int i = 0; i < depth + 1; i++)
+            stack.pop_back();
+
+        functions[fn](this, args);
+    }
 }
 
 void VM::pushFrame() {
@@ -964,15 +984,11 @@ int main(int argc, char** argv) {
     }
 
     std::ifstream t(argv[1]);
-    std::string str((std::istreambuf_iterator<char>(t)),
+    std::string code((std::istreambuf_iterator<char>(t)),
                      std::istreambuf_iterator<char>());
 
-    Tokenizer tz(str);
-    auto tokens = tz.tokenize();
-
     VM vm;
-    vm.run(tokens);
-    vm.printStack();
+    vm.run(code);
 
     return 0;
 }

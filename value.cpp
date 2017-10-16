@@ -54,7 +54,9 @@ Value newList(VM *vm) {
     return v;
 }
 
-Function::Function(VM *vm) {
+Function::Function(VM *vm) :
+    foreign(false)
+{
     classObject = vm->functionClass;
 }
 
