@@ -3,7 +3,7 @@
 ```
 print("Hello World")
 
-square = function(num) {
+function square(num) {
     return num * num
 }
 
