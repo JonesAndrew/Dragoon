@@ -110,6 +110,7 @@ enum TokenType {
     TOKEN_WHILE,
 
     TOKEN_FUNCTION,
+    TOKEN_CLASS,
 
     TOKEN_COMMA,
     TOKEN_LINE,
@@ -151,6 +152,7 @@ class Compiler {
     void whileBlock();
     void arguments();
     void createFunction();
+    void classStatement();
     void deleteStatement();
     void returnStatement();
     void statement();

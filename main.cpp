@@ -63,6 +63,7 @@ std::map<TokenType, std::string> TYPE_TO_STRING = {
     {TOKEN_WHILE, "TOKEN_WHILE"},
 
     {TOKEN_FUNCTION, "TOKEN_FUNCTION"},
+    {TOKEN_CLASS, "TOKEN_CLASS"},
 
     {TOKEN_COMMA, "TOKEN_COMMA"},
     {TOKEN_LINE, "TOKEN_LINE"},
@@ -100,6 +101,7 @@ std::map<std::string, TokenType> KEYWORDS = {
     {"while", TOKEN_WHILE},
 
     {"function", TOKEN_FUNCTION},
+    {"class", TOKEN_CLASS},
 
     {"true", TOKEN_TRUE},
     {"false", TOKEN_FALSE},
@@ -276,6 +278,11 @@ public:
 
             if (KEYWORDS.find(name) != KEYWORDS.end()) {
                 add(KEYWORDS[name]);
+
+                if (name == "function") {
+                    skipWhite();
+                    add(TOKEN_IDENT, getName());
+                }
             } else if (lookAhead == '(') {
                 // Function
                 function(name, false);
@@ -432,6 +439,10 @@ void Compiler::statement() {
         consume();
     } else if (current.type == TOKEN_RETURN) {
         returnStatement();
+    } else if (current.type == TOKEN_CLASS) {
+        classStatement();
+    } else if (current.type == TOKEN_FUNCTION) {
+        createFunction();
     } else {
         expression();
     }
@@ -459,6 +470,9 @@ void Compiler::arguments() {
 void Compiler::createFunction() {
     match(TOKEN_FUNCTION);
 
+    std::string fnName = current.value;
+    match(TOKEN_IDENT);
+
     auto temp = code;
     Value func = newFunction(vm);
 
@@ -474,6 +488,8 @@ void Compiler::createFunction() {
     fnCompiler.code.push_back(constants.size());
     fnCompiler.constants.push_back(newNum(0));
     fnCompiler.code.push_back(RETURN);
+
+    setVar(fnName);
 
     Function *fn = AS(func, Function);
     fn->code = std::vector<uint8_t>(fnCompiler.code);
@@ -635,6 +651,10 @@ void Compiler::returnStatement() {
     code.push_back(RETURN);
 }
 
+void Compiler::classStatement() {
+    match(TOKEN_CLASS);
+}
+
 void Compiler::add() {
     match(TOKEN_ADD);
     term();
@@ -702,10 +722,13 @@ void Compiler::factor() {
         match(TOKEN_RBRACKET);
     } else if (current.type == TOKEN_SYMBOL_START) {
         function();
-    } else if (current.type == TOKEN_FUNCTION) {
-        createFunction();
+        return;
     } else {
         abort("Unexpected token " + TYPE_TO_STRING[current.type] + ".");
+    }
+
+    if (current.type == TOKEN_SYMBOL_START) {
+        function();
     }
 }
 
@@ -773,7 +796,7 @@ VM::VM() {
     compiler = new Compiler(this, nullptr);
 
     run(
-        "print = function() {}"
+        "function print() {}"
     );
 
     initCore(*this);
@@ -822,10 +845,9 @@ std::string valueToStr(VM *vm, Value v) {
 }
 
 void VM::printStack() {
-    if (stack.size() == 0) return;
-
-    printf("stack %lu: %s\n", stack.size(), valueToStr(this, pop()).c_str());
-    printStack();
+    for (auto v : stack) {
+        printf("stack: %s\n", valueToStr(this, v).c_str());
+    }
 }
 
 void VM::run(std::string code) {
@@ -928,7 +950,7 @@ void VM::callMethod(uint8_t code, uint8_t depth) {
             } 
         }
 
-        printf("Missing function %s on %s\n", symbol.c_str(), valueToStr(this, args[0]).c_str());
+        printf("Missing method %s on %s\n", symbol.c_str(), valueToStr(this, args[0]).c_str());
         exit(0);
     }
 }
@@ -940,7 +962,7 @@ void VM::callFunction(uint8_t depth) {
 
     if (!fn->foreign) {
         pushFrame();
-        
+
         stack.erase(stack.end() - depth - 1);
 
         ip = &fn->code.front();
