@@ -281,7 +281,9 @@ public:
 
                 if (name == "function") {
                     skipWhite();
-                    add(TOKEN_IDENT, getName());
+                    if (lookAhead != '(') {
+                        add(TOKEN_IDENT, getName());
+                    }
                 }
             } else if (lookAhead == '(') {
                 // Function
@@ -470,8 +472,11 @@ void Compiler::arguments() {
 void Compiler::createFunction() {
     match(TOKEN_FUNCTION);
 
-    std::string fnName = current.value;
-    match(TOKEN_IDENT);
+    std::string fnName;
+    if (current.type == TOKEN_IDENT) {
+        fnName = current.value;
+        match(TOKEN_IDENT);
+    }
 
     auto temp = code;
     Value func = newFunction(vm);
@@ -489,7 +494,9 @@ void Compiler::createFunction() {
     fnCompiler.constants.push_back(newNum(0));
     fnCompiler.code.push_back(RETURN);
 
-    setVar(fnName);
+    if (fnName != "") {
+        setVar(fnName);
+    }
 
     Function *fn = AS(func, Function);
     fn->code = std::vector<uint8_t>(fnCompiler.code);
@@ -653,6 +660,9 @@ void Compiler::returnStatement() {
 
 void Compiler::classStatement() {
     match(TOKEN_CLASS);
+
+    fnName = current.value;
+    match(TOKEN_IDENT);
 }
 
 void Compiler::add() {
@@ -723,6 +733,8 @@ void Compiler::factor() {
     } else if (current.type == TOKEN_SYMBOL_START) {
         function();
         return;
+    } else if (current.type == TOKEN_FUNCTION) {
+        createFunction();
     } else {
         abort("Unexpected token " + TYPE_TO_STRING[current.type] + ".");
     }
